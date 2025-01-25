@@ -5,24 +5,70 @@ namespace UnityMovementAI
     [RequireComponent(typeof(SteeringBasics))]
     public class GoDirectionUnit : MonoBehaviour
     {
-        public Vector3 direction;
+        [Tooltip("Direction the unit should move in")]
+        public Vector3 direction = Vector3.forward;
 
-        MovementAIRigidbody rb;
-        SteeringBasics steeringBasics;
+        private MovementAIRigidbody rb;
+        private SteeringBasics steeringBasics;
 
-        void Start()
+        private void Awake()
         {
             rb = GetComponent<MovementAIRigidbody>();
             steeringBasics = GetComponent<SteeringBasics>();
+
+            if (rb == null || steeringBasics == null)
+            {
+                Debug.LogError($"Missing required components on {gameObject.name}", this);
+                enabled = false;
+                return;
+            }
         }
 
-        void FixedUpdate()
+        private void FixedUpdate()
         {
-            rb.Velocity = direction.normalized * steeringBasics.maxVelocity;
+            if (direction != Vector3.zero)
+            {
+                // Normalize direction to ensure consistent speed
+                Vector3 normalizedDirection = direction.normalized;
+                
+                // Apply movement
+                rb.Velocity = normalizedDirection * steeringBasics.maxVelocity;
 
-            steeringBasics.LookWhereYoureGoing();
+                // Update rotation
+                steeringBasics.LookWhereYoureGoing();
 
-            Debug.DrawLine(rb.ColliderPosition, rb.ColliderPosition + (direction.normalized), Color.cyan, 0f, false);
+                // Debug visualization
+                #if UNITY_EDITOR
+                DrawDebugLines(normalizedDirection);
+                #endif
+            }
+            else
+            {
+                rb.Velocity = Vector3.zero;
+            }
         }
+
+        #if UNITY_EDITOR
+        private void DrawDebugLines(Vector3 normalizedDirection)
+        {
+            // Draw movement direction
+            Debug.DrawLine(
+                rb.ColliderPosition, 
+                rb.ColliderPosition + (normalizedDirection * 2f), 
+                Color.cyan, 
+                0f, 
+                false
+            );
+        }
+
+        private void OnValidate()
+        {
+            // Ensure direction is normalized in the inspector
+            if (direction != Vector3.zero && direction.magnitude != 1f)
+            {
+                direction = direction.normalized;
+            }
+        }
+        #endif
     }
 }

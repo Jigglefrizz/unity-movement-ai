@@ -2,56 +2,140 @@
 
 namespace UnityMovementAI
 {
+    [RequireComponent(typeof(Collider))]
     public class ScreenBoundary3D : MonoBehaviour
     {
-        Vector3 bottomLeft;
-        Vector3 topRight;
-        Vector3 widthHeight;
+        [SerializeField]
+        private Camera targetCamera;
 
-        void Start()
+        private Vector3 bottomLeft;
+        private Vector3 topRight;
+        private Vector3 widthHeight;
+        private bool isInitialized;
+
+        private void Awake()
         {
-            float distAway = Mathf.Abs(Camera.main.transform.position.y);
+            // Ensure we have a camera reference
+            if (targetCamera == null)
+            {
+                targetCamera = Camera.main;
+                if (targetCamera == null)
+                {
+                    Debug.LogError("No camera found for ScreenBoundary3D. Please assign a camera or ensure there is a MainCamera tagged camera in the scene.", this);
+                    enabled = false;
+                    return;
+                }
+            }
 
-            bottomLeft = Camera.main.ViewportToWorldPoint(new Vector3(0, 0, distAway));
-            topRight = Camera.main.ViewportToWorldPoint(new Vector3(1, 1, distAway));
+            // Ensure we have a collider
+            if (!TryGetComponent<Collider>(out var collider) || !collider.isTrigger)
+            {
+                Debug.LogError("ScreenBoundary3D requires a Trigger Collider component.", this);
+                enabled = false;
+                return;
+            }
+        }
+
+        private void Start()
+        {
+            InitializeBoundary();
+        }
+
+        private void OnEnable()
+        {
+            if (isInitialized)
+            {
+                InitializeBoundary();
+            }
+        }
+
+        private void InitializeBoundary()
+        {
+            if (targetCamera == null) return;
+
+            // Calculate boundary based on camera position
+            float distAway = Mathf.Abs(targetCamera.transform.position.y);
+            
+            // Convert viewport to world coordinates
+            bottomLeft = targetCamera.ViewportToWorldPoint(new Vector3(0, 0, distAway));
+            topRight = targetCamera.ViewportToWorldPoint(new Vector3(1, 1, distAway));
             widthHeight = topRight - bottomLeft;
 
+            // Update collider scale to match screen bounds
             transform.localScale = new Vector3(widthHeight.x, transform.localScale.y, widthHeight.z);
+            
+            isInitialized = true;
         }
 
-        void OnTriggerStay(Collider other)
+        private void OnTriggerStay(Collider other)
         {
             KeepInBounds(other);
         }
 
-        void OnTriggerExit(Collider other)
+        private void OnTriggerExit(Collider other)
         {
             KeepInBounds(other);
         }
 
-        void KeepInBounds(Collider other)
+        private void KeepInBounds(Collider other)
         {
+            if (!isInitialized) return;
+
             Transform t = other.transform;
+            Vector3 newPosition = t.position;
+            bool positionChanged = false;
 
+            // Check X boundaries
             if (t.position.x < bottomLeft.x)
             {
-                t.position = new Vector3(t.position.x + widthHeight.x, t.position.y, t.position.z);
+                newPosition.x += widthHeight.x;
+                positionChanged = true;
             }
-
-            if (t.position.x > topRight.x)
+            else if (t.position.x > topRight.x)
             {
-                t.position = new Vector3(t.position.x - widthHeight.x, t.position.y, t.position.z);
+                newPosition.x -= widthHeight.x;
+                positionChanged = true;
             }
 
+            // Check Z boundaries
             if (t.position.z < bottomLeft.z)
             {
-                t.position = new Vector3(t.position.x, t.position.y, t.position.z + widthHeight.z);
+                newPosition.z += widthHeight.z;
+                positionChanged = true;
+            }
+            else if (t.position.z > topRight.z)
+            {
+                newPosition.z -= widthHeight.z;
+                positionChanged = true;
             }
 
-            if (t.position.z > topRight.z)
+            // Only update position if needed
+            if (positionChanged)
             {
-                t.position = new Vector3(t.position.x, t.position.y, t.position.z - widthHeight.z);
+                t.position = newPosition;
             }
         }
+
+        #if UNITY_EDITOR
+        private void OnValidate()
+        {
+            // Ensure collider is set to trigger in editor
+            if (TryGetComponent<Collider>(out var collider))
+            {
+                collider.isTrigger = true;
+            }
+        }
+
+        private void OnDrawGizmos()
+        {
+            if (!isInitialized) return;
+
+            // Draw boundary visualization
+            Gizmos.color = Color.yellow;
+            Vector3 center = (bottomLeft + topRight) / 2f;
+            Vector3 size = new Vector3(widthHeight.x, 1f, widthHeight.z);
+            Gizmos.DrawWireCube(center, size);
+        }
+        #endif
     }
 }

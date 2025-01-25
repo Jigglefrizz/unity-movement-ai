@@ -1,51 +1,72 @@
 ﻿using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace UnityMovementAI
 {
     [RequireComponent(typeof(MovementAIRigidbody))]
     [RequireComponent(typeof(Camera))]
+    [RequireComponent(typeof(PlayerInput))]
     public class ThirdPersonUnit : MonoBehaviour
     {
         public float speed = 5f;
-
         public float facingSpeed = 720f;
-
         public float jumpSpeed = 7f;
-
         public bool autoAttachToCamera = true;
 
-        MovementAIRigidbody rb;
+        private MovementAIRigidbody rb;
+        private Transform cam;
+        private Vector2 moveInput;
+        private bool jumpRequested;
 
-        Transform cam;
-
-        float horAxis = 0f;
-        float vertAxis = 0f;
-
-        void Start()
+        private void Start()
         {
             rb = GetComponent<MovementAIRigidbody>();
-            cam = Camera.main.transform;
-
-            if (autoAttachToCamera)
+            // Using GetComponent to handle multiple cameras better
+            var mainCamera = Camera.main;
+            if (mainCamera != null)
             {
-                cam.GetComponent<ThirdPersonCamera>().target = transform;
+                cam = mainCamera.transform;
+                if (autoAttachToCamera)
+                {
+                    var thirdPersonCam = cam.GetComponent<ThirdPersonCamera>();
+                    if (thirdPersonCam != null)
+                    {
+                        thirdPersonCam.target = transform;
+                    }
+                }
+            }
+            else
+            {
+                Debug.LogError("No main camera found in the scene!");
             }
         }
 
-        void Update()
+        // New Input System callbacks
+        public void OnMove(InputValue value)
         {
-            horAxis = Input.GetAxisRaw("Horizontal");
-            vertAxis = Input.GetAxisRaw("Vertical");
+            moveInput = value.Get<Vector2>();
+        }
 
-            if (Input.GetButtonDown("Jump"))
+        public void OnJump(InputValue value)
+        {
+            if (value.isPressed)
+            {
+                jumpRequested = true;
+            }
+        }
+
+        private void Update()
+        {
+            if (jumpRequested)
             {
                 rb.Jump(jumpSpeed);
+                jumpRequested = false;
             }
         }
 
-        void FixedUpdate()
+        private void FixedUpdate()
         {
-            if (Cursor.lockState == CursorLockMode.Locked)
+            if (Cursor.lockState == CursorLockMode.Locked && cam != null)
             {
                 rb.Velocity = GetMovementDir() * speed;
             }
@@ -55,9 +76,9 @@ namespace UnityMovementAI
             }
         }
 
-        void LateUpdate()
+        private void LateUpdate()
         {
-            if (Cursor.lockState == CursorLockMode.Locked)
+            if (Cursor.lockState == CursorLockMode.Locked && cam != null)
             {
                 Vector3 dir = GetMovementDir();
 
@@ -70,9 +91,23 @@ namespace UnityMovementAI
             }
         }
 
-        Vector3 GetMovementDir()
+        private Vector3 GetMovementDir()
         {
-            return ((cam.forward * vertAxis) + (cam.right * horAxis)).normalized;
+            // Convert input to camera-relative movement
+            if (cam != null)
+            {
+                Vector3 forward = cam.forward;
+                Vector3 right = cam.right;
+
+                // Project vectors onto the horizontal plane
+                forward.y = 0f;
+                right.y = 0f;
+                forward.Normalize();
+                right.Normalize();
+
+                return (forward * moveInput.y + right * moveInput.x).normalized;
+            }
+            return Vector3.zero;
         }
     }
 }
